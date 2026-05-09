@@ -21,6 +21,7 @@ func InitialModel() model {
 			"POST",
 			"DELETE",
 		},
+		reqCusror:       0,
 		reqTypeSelected: 0,
 	}
 }

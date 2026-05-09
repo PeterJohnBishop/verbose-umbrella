@@ -1,34 +1,36 @@
 package tui
 
 import (
-	"fmt"
+	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // the View method displays the current state of the model
+var (
+	unselectedStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("241")) // Gray
+	selectedStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("212")). // Pink
+			Bold(true)
+)
 
 func (m model) View() tea.View {
-	var s string
+	var s strings.Builder
 
-	s += "\n	API TESTING TUI\n\n"
+	s.WriteString("\n	API TESTING TUI\n\n")
 
 	for i, choice := range m.reqType {
 
-		cursor := " "
-		if m.reqCusror == i {
-			cursor = ">"
-		}
-
-		checked := " "
 		if m.reqTypeSelected == i {
-			checked = "x"
+			s.WriteString(selectedStyle.Render(choice) + "  ")
+		} else {
+			s.WriteString(unselectedStyle.Render(choice) + "  ")
 		}
-
-		s += fmt.Sprintf(" %s [%s] %s ", cursor, checked, choice)
 	}
 
-	s += "\nPress q to quit.\n"
+	s.WriteString("\nPress q to quit.\n")
 
-	return tea.NewView(s)
+	return tea.NewView(s.String())
 }

@@ -10,23 +10,19 @@ import tea "charm.land/bubbletea/v2"
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-
 	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "ctrl+c", "q":
 			return m, tea.Quit
 		case "left", "h":
-			if m.reqCusror > 0 {
-				m.reqCusror--
+			if m.reqTypeSelected > 0 {
+				m.reqTypeSelected--
 			}
 		case "right", "l":
-			if m.reqCusror < len(m.reqType)-1 {
-				m.reqCusror++
+			if m.reqTypeSelected < len(m.reqType)-1 {
+				m.reqTypeSelected++
 			}
-		case "enter", "space":
-			m.reqTypeSelected = m.reqCusror
 		}
 	}
-
 	return m, nil
 }

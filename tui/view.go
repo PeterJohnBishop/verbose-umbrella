@@ -9,7 +9,6 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
-// the View method displays the current state of the model
 var (
 	labelStyleSelected    = lipgloss.NewStyle().Foreground(lipgloss.Color("212")).Bold(true) // pink
 	labelStyleUnselected  = lipgloss.NewStyle().Foreground(lipgloss.Color("241"))            // gray
@@ -24,8 +23,20 @@ var (
 )
 
 func (m model) View() tea.View {
-
-	str := lipgloss.JoinVertical(lipgloss.Top, m.headerView(), m.requestNameInput(), m.methodSelector(), m.requestEndpointInput(), m.headersInputView(), m.headersListView(), m.paramsInputView(), m.paramsListView(), m.footerView())
+	str := lipgloss.JoinVertical(
+		lipgloss.Top,
+		m.headerView(),
+		m.requestNameInput(),
+		m.methodSelector(),
+		m.requestEndpointInput(),
+		m.headersInputView(),
+		m.headersListView(),
+		m.paramsInputView(),
+		m.paramsListView(),
+		m.bodyView(),
+		m.sendRequestView(),
+		m.footerView(),
+	)
 	return tea.NewView(str)
 }
 
@@ -35,24 +46,22 @@ func (m model) headerView() string {
 
 func (m model) requestNameInput() string {
 	var labelStyle lipgloss.Style
-
 	if m.focus == focusName {
 		labelStyle = labelStyleSelected
 	} else {
 		labelStyle = labelStyleUnselected
 	}
-	return labelStyle.Render("Name") + "\n" + m.inputs[0].View() + "\n"
+	return labelStyle.Render("Name") + "\n" + m.inputs[inputNameIdx].View() + "\n"
 }
 
 func (m model) requestEndpointInput() string {
 	var labelStyle lipgloss.Style
-
 	if m.focus == focusEndpoint {
 		labelStyle = labelStyleSelected
 	} else {
 		labelStyle = labelStyleUnselected
 	}
-	return labelStyle.Render("Endpoint") + "\n" + m.inputs[1].View() + "\n"
+	return labelStyle.Render("Endpoint") + "\n" + m.inputs[inputEndpointIdx].View() + "\n"
 }
 
 func (m model) methodSelector() string {
@@ -64,7 +73,6 @@ func (m model) methodSelector() string {
 	}
 
 	var s strings.Builder
-
 	for i, choice := range m.reqType {
 		if m.reqTypeSelected == i {
 			switch i {
@@ -83,14 +91,11 @@ func (m model) methodSelector() string {
 			s.WriteString(unselectedStyle.Render(choice) + "  ")
 		}
 	}
-
-	// 3. Render the Title, add a newline, and then render the horizontal methods
 	return labelStyle.Render("Method") + "\n" + s.String() + "\n"
 }
 
 func (m model) headersInputView() string {
 	var keyLabelStyle lipgloss.Style
-
 	if m.focus == focusHeaderKey || m.focus == focusHeaderValue {
 		keyLabelStyle = labelStyleSelected
 	} else {
@@ -105,7 +110,6 @@ func (m model) headersInputView() string {
 	}
 
 	keyView := keyLabelStyle.Render("Headers") + "\n" + m.inputs[inputHeadersKeyIdx].View()
-
 	valueView := m.inputs[inputHeadersValueIdx].View()
 
 	key := m.inputs[inputHeadersKeyIdx].Value()
@@ -113,46 +117,34 @@ func (m model) headersInputView() string {
 
 	if key == "" || val == "" {
 		return lipgloss.JoinVertical(lipgloss.Left, keyView, valueView) + "\n"
-
-	} else {
-		return lipgloss.JoinVertical(lipgloss.Left, keyView, valueView, buttonView) + "\n"
-
 	}
-
+	return lipgloss.JoinVertical(lipgloss.Left, keyView, valueView, buttonView) + "\n"
 }
 
 func (m model) headersListView() string {
-	// If there are no headers, don't render anything
 	if len(m.req.Headers) == 0 {
 		return ""
 	}
-
 	var s strings.Builder
-	s.WriteString("\ndelete || backspace|remove selected\n")
-
 	var keys []string
 	for k := range m.req.Headers {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-
 	for i, k := range keys {
 		val := m.req.Headers.Get(k)
 		row := fmt.Sprintf("%s: %s", k, val)
-
 		if m.focus == focusHeaderList && m.headerCursor == i {
 			s.WriteString(labelStyleSelected.Render("> "+row) + "\n")
 		} else {
 			s.WriteString(labelStyleUnselected.Render("  "+row) + "\n")
 		}
 	}
-
 	return s.String()
 }
 
 func (m model) paramsInputView() string {
 	var keyLabelStyle lipgloss.Style
-
 	if m.focus == focusParamKey || m.focus == focusParamValue {
 		keyLabelStyle = labelStyleSelected
 	} else {
@@ -167,7 +159,6 @@ func (m model) paramsInputView() string {
 	}
 
 	keyView := keyLabelStyle.Render("Params") + "\n" + m.inputs[inputParamsKeyIdx].View()
-
 	valueView := m.inputs[inputParamsValueIdx].View()
 
 	key := m.inputs[inputParamsKeyIdx].Value()
@@ -175,42 +166,118 @@ func (m model) paramsInputView() string {
 
 	if key == "" || val == "" {
 		return lipgloss.JoinVertical(lipgloss.Left, keyView, valueView) + "\n"
-
-	} else {
-		return lipgloss.JoinVertical(lipgloss.Left, keyView, valueView, buttonView) + "\n"
-
 	}
-
+	return lipgloss.JoinVertical(lipgloss.Left, keyView, valueView, buttonView) + "\n"
 }
 
 func (m model) paramsListView() string {
 	if len(m.req.Params) == 0 {
 		return ""
 	}
-
 	var s strings.Builder
-	s.WriteString("\ndelete || backspace|remove selected\n")
-
 	var keys []string
 	for k := range m.req.Params {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-
 	for i, k := range keys {
 		val := m.req.Params.Get(k)
 		row := fmt.Sprintf("%s: %s", k, val)
-
 		if m.focus == focusParamList && m.paramCursor == i {
 			s.WriteString(labelStyleSelected.Render("> "+row) + "\n")
 		} else {
 			s.WriteString(labelStyleUnselected.Render("  "+row) + "\n")
 		}
 	}
-
 	return s.String()
 }
 
+func (m model) bodyView() string {
+	switch m.bodyType {
+	case BodyRaw:
+		var labelStyle lipgloss.Style
+		if m.focus == focusBodyJSON {
+			labelStyle = labelStyleSelected
+		} else {
+			labelStyle = labelStyleUnselected
+		}
+		return labelStyle.Render("Body (JSON)") + "\n" + m.bodyTextArea.View() + "\n"
+
+	case BodyForm:
+		return m.bodyFormInputView() + m.bodyFormListView()
+
+	case BodyFile:
+		var labelStyle lipgloss.Style
+		if m.focus == focusBodyFile {
+			labelStyle = labelStyleSelected
+		} else {
+			labelStyle = labelStyleUnselected
+		}
+		fileText := "No file selected"
+		if m.selectedFile != "" {
+			fileText = m.selectedFile
+		}
+		return labelStyle.Render("Body (File)") + "\n" + m.fp.View() + "\n" + labelStyleUnselected.Render("Selected: "+fileText) + "\n"
+	}
+	return ""
+}
+
+func (m model) bodyFormInputView() string {
+	var keyLabelStyle lipgloss.Style
+	if m.focus == focusBodyKey || m.focus == focusBodyValue {
+		keyLabelStyle = labelStyleSelected
+	} else {
+		keyLabelStyle = labelStyleUnselected
+	}
+
+	var buttonView string
+	if m.focus == focusBodySubmit {
+		buttonView = buttonStyleSelected.Render("[ add ]")
+	} else {
+		buttonView = buttonStyleUnselected.Render("[ add ]")
+	}
+
+	keyView := keyLabelStyle.Render("Body (Form-Data)") + "\n" + m.inputs[inputFormBodyKeyIdx].View()
+	valueView := m.inputs[inputFormBodyValueIdx].View()
+
+	key := m.inputs[inputFormBodyKeyIdx].Value()
+	val := m.inputs[inputFormBodyValueIdx].Value()
+
+	if key == "" || val == "" {
+		return lipgloss.JoinVertical(lipgloss.Left, keyView, valueView) + "\n"
+	}
+	return lipgloss.JoinVertical(lipgloss.Left, keyView, valueView, buttonView) + "\n"
+}
+
+func (m model) bodyFormListView() string {
+	if len(m.req.FormData) == 0 {
+		return ""
+	}
+	var s strings.Builder
+	var keys []string
+	for k := range m.req.FormData {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for i, k := range keys {
+		val := m.req.FormData.Get(k)
+		row := fmt.Sprintf("%s: %s", k, val)
+		if m.focus == focusBodyList && m.bodyCursor == i {
+			s.WriteString(labelStyleSelected.Render("> "+row) + "\n")
+		} else {
+			s.WriteString(labelStyleUnselected.Render("  "+row) + "\n")
+		}
+	}
+	return s.String()
+}
+
+func (m model) sendRequestView() string {
+	if m.focus == focusSendReq {
+		return "\n" + buttonStyleSelected.Render("[ SEND REQUEST ]") + "\n"
+	}
+	return "\n" + buttonStyleUnselected.Render("[ SEND REQUEST ]") + "\n"
+}
+
 func (m model) footerView() string {
-	return "\n\ntab|next shift+tab|previous [ ctrl+c|quit ]\n"
+	return "\n\ntab|next shift+tab|previous ctrl+b|toggle body type [ ctrl+c|quit ]\n"
 }

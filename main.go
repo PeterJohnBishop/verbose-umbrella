@@ -1,9 +1,9 @@
 package main
 
 import (
-	"duper-waffle/verbose-umbrella/tui"
 	"fmt"
 	"os"
+	"verbose-umbrella/tui"
 
 	tea "charm.land/bubbletea/v2"
 )

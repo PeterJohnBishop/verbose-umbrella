@@ -1,93 +1,52 @@
 package tui
 
 import (
+	"net/http"
 	"net/url"
 	"sort"
 
 	tea "charm.land/bubbletea/v2"
 )
 
-// the Update method returns an updated model state
-// and optionally sends a command 'Cmd'.
-
-// Commands perform some I/O and return a message 'Msg'.
-// The message defines the update to be made by the Update method.
-
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var (
 		cmd  tea.Cmd
 		cmds []tea.Cmd
 	)
+
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
+		key := msg.String()
 
-		switch msg.String() {
+		// 1. GLOBAL NAVIGATION (Overrides everything)
+		switch key {
 		case "ctrl+c":
 			return m, tea.Quit
 
-		case "tab":
-			switch m.focus {
-			case focusHeaderValue:
-				key := m.inputs[inputHeadersKeyIdx].Value()
-				val := m.inputs[inputHeadersValueIdx].Value()
+		case "ctrl+b":
+			m.bodyType = (m.bodyType + 1) % 3
+			m.moveToBodyFocus()
+			return m, m.updateFocus()
 
-				// If EITHER key or value is empty, skip the submit button
-				if key == "" || val == "" {
-					if len(m.req.Headers) == 0 {
-						m.focus = focusParamKey
-					} else {
-						m.focus = focusHeaderList
-					}
-				} else {
-					// Both have text, advance normally to focusHeaderSubmit
-					m.focus++
-				}
+		case ">":
+			m.handleForwardNav()
+			return m, m.updateFocus()
 
-			case focusParamValue:
-				key := m.inputs[inputParamsKeyIdx].Value()
-				val := m.inputs[inputParamsValueIdx].Value()
-
-				// If EITHER key or value is empty, skip the submit button
-				if key == "" || val == "" {
-					if len(m.req.Params) == 0 {
-						m.focus = focusBody
-					} else {
-						m.focus = focusParamList
-					}
-				} else {
-					// Both have text, advance normally to focusParamSubit
-					m.focus++
-				}
-
-			default:
-				m.focus++
-			}
-
-			if m.focus > maxFocus {
-				m.focus = 0
-			}
-			cmd = m.updateFocus()
-			cmds = append(cmds, cmd)
-		case "shift+tab":
-			m.focus--
-			if m.focus < 0 {
-				m.focus = maxFocus
-			}
-			cmd = m.updateFocus()
-			cmds = append(cmds, cmd)
+		case "esc":
+			m.handleBackwardNav()
+			return m, m.updateFocus()
 		}
 
+		// 2. COMPONENT LOGIC (Only runs if not navigating)
 		switch m.focus {
-
 		case focusName:
-			if msg.String() == "esc" || msg.String() == "enter" {
+			if key == "enter" {
 				m.focus = focusMethod
-				cmd = m.updateFocus()
-				cmds = append(cmds, cmd)
+				return m, m.updateFocus()
 			}
 
 		case focusMethod:
-			switch msg.String() {
+			switch key {
 			case "left", "h":
 				if m.reqTypeSelected > 0 {
 					m.reqTypeSelected--
@@ -98,202 +57,328 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.reqTypeSelected++
 					m.req.Method = m.reqType[m.reqTypeSelected]
 				}
-				if msg.String() == "esc" || msg.String() == "enter" {
-					m.focus = focusHeaderKey
-					cmd = m.updateFocus()
-					cmds = append(cmds, cmd)
-				}
+			case "enter":
+				m.focus = focusEndpoint
+				return m, m.updateFocus()
 			}
 
 		case focusEndpoint:
-			if msg.String() == "esc" {
-				m.focus = focusMethod
-				cmd = m.updateFocus()
-				cmds = append(cmds, cmd)
-			}
-			if msg.String() == "enter" {
+			if key == "enter" {
 				m.focus = focusHeaderKey
-				cmd = m.updateFocus()
-				cmds = append(cmds, cmd)
+				return m, m.updateFocus()
 			}
 
 		case focusHeaderKey:
-			if msg.String() == "esc" {
-				m.focus = focusMethod
-				cmd = m.updateFocus()
-				cmds = append(cmds, cmd)
-			}
-			if msg.String() == "enter" {
+			if key == "enter" {
 				m.focus = focusHeaderValue
-				cmd = m.updateFocus()
-				cmds = append(cmds, cmd)
+				return m, m.updateFocus()
 			}
+
 		case focusHeaderValue:
-			if msg.String() == "esc" {
-				m.focus = focusHeaderKey
-				cmd = m.updateFocus()
-				cmds = append(cmds, cmd)
-			}
-			if msg.String() == "enter" {
+			if key == "enter" {
 				m.focus = focusHeaderSubmit
-				cmd = m.updateFocus()
-				cmds = append(cmds, cmd)
+				return m, m.updateFocus()
 			}
+
 		case focusHeaderSubmit:
-			if msg.String() == "esc" {
-				m.focus = focusHeaderValue
-				cmd = m.updateFocus()
-				cmds = append(cmds, cmd)
-			}
-			if msg.String() == "enter" {
-
-				key := m.inputs[inputHeadersKeyIdx].Value()
-				val := m.inputs[inputHeadersValueIdx].Value()
-
-				if key != "" && val != "" {
-					m.req.Headers.Add(key, val)
+			if key == "enter" {
+				k := m.inputs[inputHeadersKeyIdx].Value()
+				v := m.inputs[inputHeadersValueIdx].Value()
+				if k != "" && v != "" {
+					m.req.Headers.Add(k, v)
 				}
 				m.inputs[inputHeadersKeyIdx].SetValue("")
 				m.inputs[inputHeadersValueIdx].SetValue("")
-
 				m.focus = focusHeaderKey
-				cmd = m.updateFocus()
-				cmds = append(cmds, cmd)
+				return m, m.updateFocus()
 			}
+
 		case focusHeaderList:
-			maxIndex := len(m.req.Headers) - 1
+			m.handleHeaderListKeys(key)
 
-			switch msg.String() {
-			case "up", "k":
-				if m.headerCursor > 0 {
-					m.headerCursor--
-				}
-			case "down", "j":
-				if m.headerCursor < maxIndex {
-					m.headerCursor++
-				}
-			case "delete", "backspace":
-				if len(m.req.Headers) > 0 {
-					var keys []string
-					for k := range m.req.Headers {
-						keys = append(keys, k)
-					}
-					sort.Strings(keys)
-
-					keyToDelete := keys[m.headerCursor]
-					m.req.Headers.Del(keyToDelete)
-
-					if m.headerCursor > len(m.req.Headers)-1 && m.headerCursor > 0 {
-						m.headerCursor--
-					}
-				}
-			}
 		case focusParamKey:
-			if msg.String() == "esc" {
-				m.focus = focusHeaderList
-				cmd = m.updateFocus()
-				cmds = append(cmds, cmd)
-			}
-			if msg.String() == "enter" {
+			if key == "enter" {
 				m.focus = focusParamValue
-				cmd = m.updateFocus()
-				cmds = append(cmds, cmd)
+				return m, m.updateFocus()
 			}
+
 		case focusParamValue:
-			if msg.String() == "esc" {
-				m.focus = focusParamKey
-				cmd = m.updateFocus()
-				cmds = append(cmds, cmd)
-			}
-			if msg.String() == "enter" {
+			if key == "enter" {
 				m.focus = focusParamSubit
-				cmd = m.updateFocus()
-				cmds = append(cmds, cmd)
+				return m, m.updateFocus()
 			}
+
 		case focusParamSubit:
-			if msg.String() == "esc" {
-				m.focus = focusParamValue
-				cmd = m.updateFocus()
-				cmds = append(cmds, cmd)
-			}
-			if msg.String() == "enter" {
-
-				key := m.inputs[inputParamsKeyIdx].Value()
-				val := m.inputs[inputParamsValueIdx].Value()
-
-				if key != "" && val != "" {
-					m.req.Params.Add(key, val)
-
-					endpointStr := m.inputs[inputEndpointIdx].Value()
-					u, err := url.Parse(endpointStr)
-					if err == nil {
-						q := u.Query()
-						q.Add(key, val)
-						u.RawQuery = q.Encode()
-						m.inputs[inputEndpointIdx].SetValue(u.String())
-					}
+			if key == "enter" {
+				k := m.inputs[inputParamsKeyIdx].Value()
+				v := m.inputs[inputParamsValueIdx].Value()
+				if k != "" && v != "" {
+					m.req.Params.Add(k, v)
+					m.syncEndpoint()
 				}
-
 				m.inputs[inputParamsKeyIdx].SetValue("")
 				m.inputs[inputParamsValueIdx].SetValue("")
-
 				m.focus = focusParamKey
-				cmd = m.updateFocus()
-				cmds = append(cmds, cmd)
+				return m, m.updateFocus()
 			}
+
 		case focusParamList:
-			maxIndex := len(m.req.Params) - 1
+			m.handleParamListKeys(key)
 
-			switch msg.String() {
-			case "up", "k":
-				if m.paramCursor > 0 {
-					m.paramCursor--
-				}
-			case "down", "j":
-				if m.paramCursor < maxIndex {
-					m.paramCursor++
-				}
-			case "delete", "backspace":
-				if len(m.req.Params) > 0 {
-					var keys []string
-					for k := range m.req.Params {
-						keys = append(keys, k)
-					}
-					sort.Strings(keys)
-
-					keyToDelete := keys[m.paramCursor]
-					m.req.Params.Del(keyToDelete)
-
-					endpointStr := m.inputs[inputEndpointIdx].Value()
-					u, err := url.Parse(endpointStr)
-					if err == nil {
-						q := u.Query()
-						q.Del(keyToDelete)
-						u.RawQuery = q.Encode()
-
-						m.inputs[inputEndpointIdx].SetValue(u.String())
-					}
-
-					if m.paramCursor > len(m.req.Params)-1 && m.paramCursor > 0 {
-						m.paramCursor--
-					}
-				}
+		case focusBodyJSON:
+			if key == "tab" {
+				m.bodyTextArea.InsertString("    ")
+				return m, nil
 			}
+			// Manual update to ensure component gets the message
+			m.bodyTextArea, cmd = m.bodyTextArea.Update(msg)
+			return m, cmd
+
+		case focusBodyKey:
+			if key == "enter" {
+				m.focus = focusBodyValue
+				return m, m.updateFocus()
+			}
+
+		case focusBodyValue:
+			if key == "enter" {
+				m.focus = focusBodySubmit
+				return m, m.updateFocus()
+			}
+
+		case focusBodySubmit:
+			if key == "enter" {
+				k := m.inputs[inputFormBodyKeyIdx].Value()
+				v := m.inputs[inputFormBodyValueIdx].Value()
+				if k != "" && v != "" {
+					m.req.FormData.Add(k, v)
+				}
+				m.inputs[inputFormBodyKeyIdx].SetValue("")
+				m.inputs[inputFormBodyValueIdx].SetValue("")
+				m.focus = focusBodyKey
+				return m, m.updateFocus()
+			}
+
+		case focusBodyList:
+			m.handleBodyListKeys(key)
+
+		case focusBodyFile:
+			m.fp, cmd = m.fp.Update(msg)
+			if didSelect, path := m.fp.DidSelectFile(msg); didSelect {
+				m.selectedFile = path
+			}
+			return m, cmd
 		}
 	}
 
+	// 3. FALLBACK: Update visible text inputs
 	var tiCmd tea.Cmd
 	for i := range m.inputs {
 		m.inputs[i], tiCmd = m.inputs[i].Update(msg)
 		cmds = append(cmds, tiCmd)
 	}
+
 	return m, tea.Batch(cmds...)
+}
+
+// NAVIGATION HELPERS
+
+func (m *model) handleForwardNav() {
+	switch m.focus {
+	case focusHeaderValue:
+		if m.inputs[inputHeadersKeyIdx].Value() == "" || m.inputs[inputHeadersValueIdx].Value() == "" {
+			if len(m.req.Headers) == 0 {
+				m.focus = focusParamKey
+			} else {
+				m.focus = focusHeaderList
+			}
+		} else {
+			m.focus = focusHeaderSubmit
+		}
+	case focusHeaderList:
+		m.focus = focusParamKey
+	case focusParamValue:
+		if m.inputs[inputParamsKeyIdx].Value() == "" || m.inputs[inputParamsValueIdx].Value() == "" {
+			if len(m.req.Params) == 0 {
+				m.moveToBodyFocus()
+			} else {
+				m.focus = focusParamList
+			}
+		} else {
+			m.focus = focusParamSubit
+		}
+	case focusParamList:
+		m.moveToBodyFocus()
+	case focusBodyValue:
+		if m.inputs[inputFormBodyKeyIdx].Value() == "" || m.inputs[inputFormBodyValueIdx].Value() == "" {
+			if len(m.req.FormData) == 0 {
+				m.focus = focusSendReq
+			} else {
+				m.focus = focusBodyList
+			}
+		} else {
+			m.focus = focusBodySubmit
+		}
+	case focusBodyJSON, focusBodyFile, focusBodyList, focusBodySubmit:
+		m.focus = focusSendReq
+	case focusSendReq:
+		m.focus = focusName
+	default:
+		m.focus++
+	}
+}
+
+func (m *model) handleBackwardNav() {
+	switch m.focus {
+	case focusSendReq:
+		switch m.bodyType {
+		case BodyRaw:
+			m.focus = focusBodyJSON
+		case BodyFile:
+			m.focus = focusBodyFile
+		case BodyForm:
+			if len(m.req.FormData) > 0 {
+				m.focus = focusBodyList
+			} else {
+				m.focus = focusBodySubmit
+			}
+		}
+	case focusBodyJSON, focusBodyKey, focusBodyFile:
+		if len(m.req.Params) > 0 {
+			m.focus = focusParamList
+		} else {
+			m.focus = focusParamSubit
+		}
+	case focusParamKey:
+		if len(m.req.Headers) > 0 {
+			m.focus = focusHeaderList
+		} else {
+			m.focus = focusHeaderSubmit
+		}
+	case focusHeaderKey:
+		m.focus = focusEndpoint
+	case focusMethod:
+		m.focus = focusName
+	case focusName:
+		m.focus = focusSendReq
+	default:
+		m.focus--
+	}
+}
+
+// LIST HANDLERS
+
+func (m *model) handleHeaderListKeys(key string) {
+	max := len(m.req.Headers) - 1
+	if key == "up" || key == "k" {
+		if m.headerCursor > 0 {
+			m.headerCursor--
+		}
+	}
+	if key == "down" || key == "j" {
+		if m.headerCursor < max {
+			m.headerCursor++
+		}
+	}
+	if key == "delete" || key == "backspace" {
+		if len(m.req.Headers) > 0 {
+			keys := getSortedKeys(m.req.Headers)
+			m.req.Headers.Del(keys[m.headerCursor])
+			if m.headerCursor > 0 && m.headerCursor >= len(m.req.Headers) {
+				m.headerCursor--
+			}
+		}
+	}
+}
+
+func (m *model) handleParamListKeys(key string) {
+	max := len(m.req.Params) - 1
+	if key == "up" || key == "k" {
+		if m.paramCursor > 0 {
+			m.paramCursor--
+		}
+	}
+	if key == "down" || key == "j" {
+		if m.paramCursor < max {
+			m.paramCursor++
+		}
+	}
+	if key == "delete" || key == "backspace" {
+		if len(m.req.Params) > 0 {
+			keys := getSortedKeysParams(m.req.Params)
+			m.req.Params.Del(keys[m.paramCursor])
+			m.syncEndpoint()
+			if m.paramCursor > 0 && m.paramCursor >= len(m.req.Params) {
+				m.paramCursor--
+			}
+		}
+	}
+}
+
+func (m *model) handleBodyListKeys(key string) {
+	max := len(m.req.FormData) - 1
+	if key == "up" || key == "k" {
+		if m.bodyCursor > 0 {
+			m.bodyCursor--
+		}
+	}
+	if key == "down" || key == "j" {
+		if m.bodyCursor < max {
+			m.bodyCursor++
+		}
+	}
+	if key == "delete" || key == "backspace" {
+		if len(m.req.FormData) > 0 {
+			keys := getSortedKeysParams(m.req.FormData)
+			m.req.FormData.Del(keys[m.bodyCursor])
+			if m.bodyCursor > 0 && m.bodyCursor >= len(m.req.FormData) {
+				m.bodyCursor--
+			}
+		}
+	}
+}
+
+func (m *model) syncEndpoint() {
+	u, err := url.Parse(m.inputs[inputEndpointIdx].Value())
+	if err == nil {
+		u.RawQuery = m.req.Params.Encode()
+		m.inputs[inputEndpointIdx].SetValue(u.String())
+	}
+}
+
+func getSortedKeys(h http.Header) []string {
+	keys := make([]string, 0, len(h))
+	for k := range h {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func getSortedKeysParams(v url.Values) []string {
+	keys := make([]string, 0, len(v))
+	for k := range v {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func (m *model) moveToBodyFocus() {
+	switch m.bodyType {
+	case BodyRaw:
+		m.focus = focusBodyJSON
+	case BodyForm:
+		m.focus = focusBodyKey
+	case BodyFile:
+		m.focus = focusBodyFile
+	}
 }
 
 func (m *model) updateFocus() tea.Cmd {
 	var cmds []tea.Cmd
+	activeIndex := -1
 
-	var activeIndex int
 	switch m.focus {
 	case focusName:
 		activeIndex = inputNameIdx
@@ -307,12 +392,10 @@ func (m *model) updateFocus() tea.Cmd {
 		activeIndex = inputParamsKeyIdx
 	case focusParamValue:
 		activeIndex = inputParamsValueIdx
-	case focusBody:
-		activeIndex = inputBodyIdx
-	case focusMethod:
-		activeIndex = -1
-	case focuseResponse:
-		activeIndex = -1
+	case focusBodyKey:
+		activeIndex = inputFormBodyKeyIdx
+	case focusBodyValue:
+		activeIndex = inputFormBodyValueIdx
 	}
 
 	for i := range m.inputs {
@@ -321,6 +404,12 @@ func (m *model) updateFocus() tea.Cmd {
 		} else {
 			m.inputs[i].Blur()
 		}
+	}
+
+	if m.focus == focusBodyJSON {
+		cmds = append(cmds, m.bodyTextArea.Focus())
+	} else {
+		m.bodyTextArea.Blur()
 	}
 
 	return tea.Batch(cmds...)

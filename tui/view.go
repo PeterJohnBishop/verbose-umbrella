@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -201,7 +203,7 @@ func (m model) bodyView() string {
 		} else {
 			labelStyle = labelStyleUnselected
 		}
-		return labelStyle.Render("Body (JSON)") + "\n" + m.bodyTextArea.View() + "\n"
+		return labelStyle.Render("Body (JSON)\n") + "\n" + m.bodyTextArea.View() + "\n"
 
 	case BodyForm:
 		return m.bodyFormInputView() + m.bodyFormListView()
@@ -213,11 +215,19 @@ func (m model) bodyView() string {
 		} else {
 			labelStyle = labelStyleUnselected
 		}
-		fileText := "No file selected"
-		if m.selectedFile != "" {
-			fileText = m.selectedFile
+
+		statusText := ""
+		if m.inputs[inputFileBodyIdx].Value() != "" {
+			if m.fileExists {
+				statusText = lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Render("✓ " + m.fileError)
+			} else {
+				statusText = lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Render("✗ " + m.fileError)
+			}
 		}
-		return labelStyle.Render("Body (File)") + "\n" + m.fp.View() + "\n" + labelStyleUnselected.Render("Selected: "+fileText) + "\n"
+
+		return labelStyle.Render("Body (File Path)") + "\n" +
+			m.inputs[inputFileBodyIdx].View() + "\n" +
+			statusText + "\n"
 	}
 	return ""
 }
@@ -237,7 +247,7 @@ func (m model) bodyFormInputView() string {
 		buttonView = buttonStyleUnselected.Render("[ add ]")
 	}
 
-	keyView := keyLabelStyle.Render("Body (Form-Data)") + "\n" + m.inputs[inputFormBodyKeyIdx].View()
+	keyView := keyLabelStyle.Render("Body (Form-Data)\n") + "\n" + m.inputs[inputFormBodyKeyIdx].View()
 	valueView := m.inputs[inputFormBodyValueIdx].View()
 
 	key := m.inputs[inputFormBodyKeyIdx].Value()
@@ -278,6 +288,48 @@ func (m model) sendRequestView() string {
 	return "\n" + buttonStyleUnselected.Render("[ SEND REQUEST ]") + "\n"
 }
 
+func (m model) responseView() string {
+	var labelStyle lipgloss.Style
+
+	// Using your spelling of 'focuseResponse' from the previous iota
+	if m.focus == focuseResponse {
+		labelStyle = labelStyleSelected
+	} else {
+		labelStyle = labelStyleUnselected
+	}
+
+	header := labelStyle.Render("Response Data") + "\n\n"
+
+	return header + m.viewport.View()
+}
+
 func (m model) footerView() string {
-	return "\n\ntab|next shift+tab|previous ctrl+b|toggle body type [ ctrl+c|quit ]\n"
+	return "\n> [next] < [previous] ctrl+b [toggle: JSON, FormData, File] ctrl+c [quit]\n"
+}
+
+func formatJSONWithLineNumbers(rawJSON string) string {
+	if rawJSON == "" {
+		return unselectedStyle.Render("Awaiting response...")
+	}
+
+	var pretty bytes.Buffer
+	err := json.Indent(&pretty, []byte(rawJSON), "", "  ")
+
+	textToFormat := pretty.String()
+	if err != nil {
+		textToFormat = rawJSON
+	}
+
+	lines := strings.Split(textToFormat, "\n")
+	var b strings.Builder
+
+	numWidth := len(fmt.Sprintf("%d", len(lines)))
+	lineNumStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241")).MarginRight(1)
+
+	for i, line := range lines {
+		lineNum := fmt.Sprintf("%*d", numWidth, i+1)
+		b.WriteString(lineNumStyle.Render(lineNum) + "│ " + line + "\n")
+	}
+
+	return b.String()
 }

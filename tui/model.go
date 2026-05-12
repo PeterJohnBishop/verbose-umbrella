@@ -7,6 +7,7 @@ import (
 	"charm.land/bubbles/v2/filepicker"
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 )
 
@@ -24,10 +25,14 @@ type model struct {
 	bodyTextArea    textarea.Model
 	fp              filepicker.Model
 	selectedFile    string
+	viewport        viewport.Model
+	ready           bool
+	fileExists      bool
+	fileError       string
 }
 
 func InitialModel() model {
-	inputs := make([]textinput.Model, 8)
+	inputs := make([]textinput.Model, 9)
 
 	inputs[inputNameIdx] = textinput.New()
 	inputs[inputNameIdx].Placeholder = "Name/Description"
@@ -63,6 +68,10 @@ func InitialModel() model {
 	inputs[inputFormBodyValueIdx].Placeholder = "value"
 	inputs[inputFormBodyValueIdx].SetWidth(120)
 
+	inputs[inputFileBodyIdx] = textinput.New()
+	inputs[inputFileBodyIdx].Placeholder = "/path/to/your/file.json"
+	inputs[inputFileBodyIdx].SetWidth(120)
+
 	bodyTextArea := textarea.New()
 	bodyTextArea.Placeholder = "{ \"key\": \"value\" }"
 	bodyTextArea.SetWidth(60)
@@ -71,6 +80,11 @@ func InitialModel() model {
 	fp := filepicker.New()
 	fp.AllowedTypes = []string{".json", ".txt", ".csv", ".bin"}
 	fp.CurrentDirectory = "."
+
+	vp := viewport.New(
+		viewport.WithWidth(80),
+		viewport.WithHeight(20),
+	)
 
 	return model{
 		focus:  focusName,
@@ -91,6 +105,7 @@ func InitialModel() model {
 		bodyType:        BodyRaw,
 		bodyTextArea:    bodyTextArea,
 		fp:              fp,
+		viewport:        vp,
 	}
 }
 
@@ -142,6 +157,7 @@ const (
 	inputParamsValueIdx   = 5
 	inputFormBodyKeyIdx   = 6
 	inputFormBodyValueIdx = 7
+	inputFileBodyIdx      = 8
 )
 
 const maxFocus = focuseResponse

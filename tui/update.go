@@ -1,10 +1,13 @@
 package tui
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
+	"os"
 	"sort"
 
+	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 )
 
@@ -15,10 +18,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	)
 
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		if !m.ready {
+			m.viewport = viewport.New(
+				viewport.WithWidth(msg.Width/2),
+				viewport.WithHeight(msg.Height-5),
+			)
+			m.viewport.SetContent(formatJSONWithLineNumbers(""))
+			m.ready = true
+		} else {
+			m.viewport.SetWidth(msg.Width / 2)
+			m.viewport.SetHeight(msg.Height - 5)
+		}
 	case tea.KeyPressMsg:
 		key := msg.String()
 
-		// 1. GLOBAL NAVIGATION (Overrides everything)
+		// GLOBAL NAVIGATION (Overrides everything)
 		switch key {
 		case "ctrl+c":
 			return m, tea.Quit
@@ -32,12 +47,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.handleForwardNav()
 			return m, m.updateFocus()
 
-		case "esc":
+		case "<":
 			m.handleBackwardNav()
 			return m, m.updateFocus()
 		}
 
-		// 2. COMPONENT LOGIC (Only runs if not navigating)
+		// COMPONENT LOGIC (Only runs if not navigating)
 		switch m.focus {
 		case focusName:
 			if key == "enter" {
@@ -163,19 +178,29 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.handleBodyListKeys(key)
 
 		case focusBodyFile:
-			m.fp, cmd = m.fp.Update(msg)
-			if didSelect, path := m.fp.DidSelectFile(msg); didSelect {
-				m.selectedFile = path
+			if key == "enter" {
+				m.focus = focusSendReq
+				return m, m.updateFocus()
 			}
-			return m, cmd
+		case focusSendReq:
+			if msg.String() == "enter" {
+				if m.bodyType == BodyFile && !m.fileExists {
+					return m, nil
+				}
+				// send request
+			}
 		}
 	}
 
-	// 3. FALLBACK: Update visible text inputs
+	// Update visible text inputs
 	var tiCmd tea.Cmd
 	for i := range m.inputs {
 		m.inputs[i], tiCmd = m.inputs[i].Update(msg)
 		cmds = append(cmds, tiCmd)
+
+		if i == inputFileBodyIdx && m.focus == focusBodyFile {
+			m.fileExists, m.fileError = checkFileExists(m.inputs[i].Value())
+		}
 	}
 
 	return m, tea.Batch(cmds...)
@@ -240,27 +265,50 @@ func (m *model) handleBackwardNav() {
 			if len(m.req.FormData) > 0 {
 				m.focus = focusBodyList
 			} else {
-				m.focus = focusBodySubmit
+				m.focus = focusBodyValue
 			}
 		}
+
+	case focusBodyList, focusBodySubmit:
+		m.focus = focusBodyValue
+	case focusBodyValue:
+		m.focus = focusBodyKey
+
 	case focusBodyJSON, focusBodyKey, focusBodyFile:
 		if len(m.req.Params) > 0 {
 			m.focus = focusParamList
 		} else {
-			m.focus = focusParamSubit
+			m.focus = focusParamValue
 		}
+
+	case focusParamList, focusParamSubit:
+		m.focus = focusParamValue
+	case focusParamValue:
+		m.focus = focusParamKey
+
 	case focusParamKey:
 		if len(m.req.Headers) > 0 {
 			m.focus = focusHeaderList
 		} else {
-			m.focus = focusHeaderSubmit
+			m.focus = focusHeaderValue
 		}
+
+	// Headers reverse navigation
+	case focusHeaderList, focusHeaderSubmit:
+		m.focus = focusHeaderValue
+	case focusHeaderValue:
+		m.focus = focusHeaderKey
+
+	// Top section reverse navigation
 	case focusHeaderKey:
 		m.focus = focusEndpoint
+	case focusEndpoint:
+		m.focus = focusMethod
 	case focusMethod:
 		m.focus = focusName
 	case focusName:
 		m.focus = focusSendReq
+
 	default:
 		m.focus--
 	}
@@ -396,6 +444,8 @@ func (m *model) updateFocus() tea.Cmd {
 		activeIndex = inputFormBodyKeyIdx
 	case focusBodyValue:
 		activeIndex = inputFormBodyValueIdx
+	case focusBodyFile:
+		activeIndex = inputFileBodyIdx
 	}
 
 	for i := range m.inputs {
@@ -413,4 +463,33 @@ func (m *model) updateFocus() tea.Cmd {
 	}
 
 	return tea.Batch(cmds...)
+}
+
+func checkFileExists(path string) (bool, string) {
+	if path == "" {
+		return false, ""
+	}
+
+	info, err := os.Stat(path)
+
+	if os.IsNotExist(err) {
+		return false, "File does not exist"
+	}
+	if err != nil {
+		return false, "Cannot access: " + err.Error()
+	}
+	if info.IsDir() {
+		return false, "Path is a directory, not a file"
+	}
+
+	sizeBytes := float64(info.Size())
+
+	// 1 MB = 1024 * 1024 bytes
+	if sizeBytes >= 1048576 {
+		sizeMB := sizeBytes / 1048576
+		return true, fmt.Sprintf("File found (%.2f MB)", sizeMB)
+	}
+
+	sizeKB := sizeBytes / 1024.0
+	return true, fmt.Sprintf("File found (%.2f KB)", sizeKB)
 }

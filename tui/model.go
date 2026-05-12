@@ -14,25 +14,56 @@ import (
 
 type model struct {
 	focus           FocusState
+	inputs          []textinput.Model
 	req             Request
-	reqNameInput    textinput.Model
 	reqType         []string
 	reqCusror       int
 	reqTypeSelected int
+	headerCursor    int
+	paramCursor     int
 }
 
 func InitialModel() model {
 
-	rnTi := textinput.New()
-	rnTi.Placeholder = "Name/Description"
-	rnTi.SetVirtualCursor(false)
-	rnTi.Focus()
-	rnTi.CharLimit = 156
-	rnTi.SetWidth(30)
+	inputs := make([]textinput.Model, 7)
+
+	inputs[inputNameIdx] = textinput.New()
+	inputs[inputNameIdx].Placeholder = "Name/Description"
+	inputs[inputNameIdx].Focus() // Default focus on startup
+	inputs[inputNameIdx].CharLimit = 156
+	inputs[inputNameIdx].SetWidth(120)
+
+	inputs[inputEndpointIdx] = textinput.New()
+	inputs[inputEndpointIdx].Placeholder = "http://"
+	inputs[inputEndpointIdx].SetWidth(120)
+
+	inputs[inputHeadersKeyIdx] = textinput.New()
+	inputs[inputHeadersKeyIdx].Placeholder = "key"
+	inputs[inputHeadersKeyIdx].SetWidth(120)
+
+	inputs[inputHeadersValueIdx] = textinput.New()
+	inputs[inputHeadersValueIdx].Placeholder = "value"
+	inputs[inputHeadersValueIdx].SetWidth(3120)
+
+	inputs[inputParamsKeyIdx] = textinput.New()
+	inputs[inputParamsKeyIdx].Placeholder = "key"
+	inputs[inputParamsKeyIdx].SetWidth(120)
+
+	inputs[inputParamsValueIdx] = textinput.New()
+	inputs[inputParamsValueIdx].Placeholder = "value"
+	inputs[inputParamsValueIdx].SetWidth(120)
+
+	inputs[inputBodyIdx] = textinput.New()
+	inputs[inputBodyIdx].Placeholder = "{ \"key\": \"value\" }"
+	inputs[inputBodyIdx].SetWidth(120)
 
 	return model{
-		focus:        focusNameInput,
-		reqNameInput: rnTi,
+		focus:  focusName,
+		inputs: inputs,
+		req: Request{
+			Headers: make(http.Header),
+			Params:  url.Values{},
+		},
 		reqType: []string{
 			"GET",
 			"PUT",
@@ -45,19 +76,41 @@ func InitialModel() model {
 }
 
 func (m model) Init() tea.Cmd {
-	return textinput.Blink
+	var cmds []tea.Cmd
+	cmds = append(cmds, textinput.Blink)
+	cmds = append(cmds, m.updateFocus())
+	return tea.Batch(cmds...)
 }
 
 type FocusState int
 
 const (
-	focusNameInput FocusState = iota
-	focusMethodSelector
-	focusHeaders
-	// Add focusBody, focusParams, etc.
+	focusName FocusState = iota
+	focusMethod
+	focusEndpoint
+	focusHeaderKey
+	focusHeaderValue
+	focusHeaderSubmit
+	focusHeaderList
+	focusParamKey
+	focusParamValue
+	focusParamSubit
+	focusParamList
+	focusBody
+	focuseResponse
 )
 
-const maxFocus = focusMethodSelector // or whichever is last
+const (
+	inputNameIdx         = 0
+	inputEndpointIdx     = 1
+	inputHeadersKeyIdx   = 2
+	inputHeadersValueIdx = 3
+	inputParamsKeyIdx    = 4
+	inputParamsValueIdx  = 5
+	inputBodyIdx         = 6
+)
+
+const maxFocus = focuseResponse // or whichever is last
 
 type Request struct {
 	Name     string

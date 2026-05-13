@@ -111,16 +111,23 @@ func (m model) headersInputView() string {
 		buttonView = buttonStyleUnselected.Render("[ add ]")
 	}
 
-	keyView := keyLabelStyle.Render("Headers") + "\n" + m.inputs[inputHeadersKeyIdx].View()
+	title := keyLabelStyle.Render("Headers") + "\n"
+
+	keyView := m.inputs[inputHeadersKeyIdx].View()
 	valueView := m.inputs[inputHeadersValueIdx].View()
+
+	keyContainer := lipgloss.NewStyle().Width(30).Render(keyView)
 
 	key := m.inputs[inputHeadersKeyIdx].Value()
 	val := m.inputs[inputHeadersValueIdx].Value()
 
+	inputRow := lipgloss.JoinHorizontal(lipgloss.Top, keyContainer, valueView)
+
 	if key == "" || val == "" {
-		return lipgloss.JoinVertical(lipgloss.Left, keyView, valueView) + "\n"
+		return title + inputRow + "\n"
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, keyView, valueView, buttonView) + "\n"
+
+	return title + lipgloss.JoinHorizontal(lipgloss.Top, inputRow, lipgloss.NewStyle().MarginLeft(2).Render(buttonView)) + "\n"
 }
 
 func (m model) headersListView() string {
@@ -135,7 +142,9 @@ func (m model) headersListView() string {
 	sort.Strings(keys)
 	for i, k := range keys {
 		val := m.req.Headers.Get(k)
-		row := fmt.Sprintf("%s: %s", k, val)
+
+		row := fmt.Sprintf("%-30s %s", k, val)
+
 		if m.focus == focusHeaderList && m.headerCursor == i {
 			s.WriteString(labelStyleSelected.Render("> "+row) + "\n")
 		} else {
@@ -160,16 +169,22 @@ func (m model) paramsInputView() string {
 		buttonView = buttonStyleUnselected.Render("[ add ]")
 	}
 
-	keyView := keyLabelStyle.Render("Params") + "\n" + m.inputs[inputParamsKeyIdx].View()
+	title := keyLabelStyle.Render("Params") + "\n"
+
+	keyView := m.inputs[inputParamsKeyIdx].View()
 	valueView := m.inputs[inputParamsValueIdx].View()
+
+	keyContainer := lipgloss.NewStyle().Width(30).Render(keyView)
 
 	key := m.inputs[inputParamsKeyIdx].Value()
 	val := m.inputs[inputParamsValueIdx].Value()
 
+	inputRow := lipgloss.JoinHorizontal(lipgloss.Top, keyContainer, valueView)
+
 	if key == "" || val == "" {
-		return lipgloss.JoinVertical(lipgloss.Left, keyView, valueView) + "\n"
+		return title + inputRow + "\n"
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, keyView, valueView, buttonView) + "\n"
+	return title + lipgloss.JoinHorizontal(lipgloss.Top, inputRow, lipgloss.NewStyle().MarginLeft(2).Render(buttonView)) + "\n"
 }
 
 func (m model) paramsListView() string {
@@ -184,7 +199,9 @@ func (m model) paramsListView() string {
 	sort.Strings(keys)
 	for i, k := range keys {
 		val := m.req.Params.Get(k)
-		row := fmt.Sprintf("%s: %s", k, val)
+
+		row := fmt.Sprintf("%-30s %s", k, val)
+
 		if m.focus == focusParamList && m.paramCursor == i {
 			s.WriteString(labelStyleSelected.Render("> "+row) + "\n")
 		} else {
@@ -247,16 +264,22 @@ func (m model) bodyFormInputView() string {
 		buttonView = buttonStyleUnselected.Render("[ add ]")
 	}
 
-	keyView := keyLabelStyle.Render("Body (Form-Data)\n") + "\n" + m.inputs[inputFormBodyKeyIdx].View()
+	title := keyLabelStyle.Render("Body (Form-Data)") + "\n"
+
+	keyView := m.inputs[inputFormBodyKeyIdx].View()
 	valueView := m.inputs[inputFormBodyValueIdx].View()
+
+	keyContainer := lipgloss.NewStyle().Width(30).Render(keyView)
 
 	key := m.inputs[inputFormBodyKeyIdx].Value()
 	val := m.inputs[inputFormBodyValueIdx].Value()
 
+	inputRow := lipgloss.JoinHorizontal(lipgloss.Top, keyContainer, valueView)
+
 	if key == "" || val == "" {
-		return lipgloss.JoinVertical(lipgloss.Left, keyView, valueView) + "\n"
+		return title + inputRow + "\n"
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, keyView, valueView, buttonView) + "\n"
+	return title + lipgloss.JoinHorizontal(lipgloss.Top, inputRow, lipgloss.NewStyle().MarginLeft(2).Render(buttonView)) + "\n"
 }
 
 func (m model) bodyFormListView() string {
@@ -271,7 +294,9 @@ func (m model) bodyFormListView() string {
 	sort.Strings(keys)
 	for i, k := range keys {
 		val := m.req.FormData.Get(k)
-		row := fmt.Sprintf("%s: %s", k, val)
+
+		row := fmt.Sprintf("%-30s %s", k, val)
+
 		if m.focus == focusBodyList && m.bodyCursor == i {
 			s.WriteString(labelStyleSelected.Render("> "+row) + "\n")
 		} else {

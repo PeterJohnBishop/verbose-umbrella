@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"sort"
+	"strings"
 
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
@@ -18,19 +19,32 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	)
 
 	switch msg := msg.(type) {
+
+	case responseMsg:
+		if msg.err != nil {
+			errJSON := fmt.Sprintf(`{"error": "%s"}`, msg.err.Error())
+			m.req.Response = []byte(errJSON)
+			m.viewport.SetContent(formatJSONWithLineNumbers(errJSON))
+		} else {
+			m.req.Response = msg.body
+			m.viewport.SetContent(formatJSONWithLineNumbers(string(msg.body)))
+		}
+		return m, nil
+
 	case tea.WindowSizeMsg:
+		formHeight := 55
 		if !m.ready {
 			m.viewport = viewport.New(
-				viewport.WithWidth(msg.Width/2),
-				viewport.WithHeight(msg.Height-5),
+				viewport.WithWidth(msg.Width),
+				viewport.WithHeight(msg.Height-formHeight),
 			)
 			m.viewport.SetContent(formatJSONWithLineNumbers(""))
 			m.ready = true
 		} else {
-			m.viewport.SetWidth(msg.Width / 2)
-			m.viewport.SetHeight(msg.Height - 5)
+			m.viewport.SetWidth(msg.Width)
+			m.viewport.SetHeight(msg.Height - formHeight)
 		}
-	case tea.KeyPressMsg:
+	case tea.KeyMsg:
 		key := msg.String()
 
 		// GLOBAL NAVIGATION (Overrides everything)
@@ -184,15 +198,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case focusSendReq:
 			if msg.String() == "enter" {
-				if m.bodyType == BodyFile && !m.fileExists {
-					return m, nil
+				endpoint := m.inputs[inputEndpointIdx].Value()
+				if endpoint != "" && !strings.HasPrefix(endpoint, "http://") && !strings.HasPrefix(endpoint, "https://") {
+					endpoint = "http://" + endpoint
 				}
-				// send request
+				m.req.Endpoint = endpoint
+				if m.bodyType == BodyRaw {
+					m.req.Body = m.bodyTextArea.Value()
+				} else if m.bodyType == BodyFile {
+					if !m.fileExists {
+						return m, nil
+					}
+					m.req.Body = m.inputs[inputFileBodyIdx].Value()
+				}
+
+				return m, sendRequestCmd(&m.req)
 			}
 		}
 	}
 
-	// Update visible text inputs
 	var tiCmd tea.Cmd
 	for i := range m.inputs {
 		m.inputs[i], tiCmd = m.inputs[i].Update(msg)
@@ -202,6 +226,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.fileExists, m.fileError = checkFileExists(m.inputs[i].Value())
 		}
 	}
+
+	var vpCmd tea.Cmd
+	m.viewport, vpCmd = m.viewport.Update(msg)
+	cmds = append(cmds, vpCmd)
 
 	return m, tea.Batch(cmds...)
 }

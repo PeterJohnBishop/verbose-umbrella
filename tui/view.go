@@ -26,7 +26,7 @@ var (
 
 func (m model) View() tea.View {
 	str := lipgloss.JoinVertical(
-		lipgloss.Top,
+		lipgloss.Left,
 		m.headerView(),
 		m.requestNameInput(),
 		m.methodSelector(),
@@ -37,13 +37,14 @@ func (m model) View() tea.View {
 		m.paramsListView(),
 		m.bodyView(),
 		m.sendRequestView(),
-		m.footerView(),
+		m.footerView(),   // Keybindings
+		m.responseView(), // Response Data below keybindings
 	)
 	return tea.NewView(str)
 }
 
 func (m model) headerView() string {
-	return "\nAPI Testing\n"
+	return "API Testing\n"
 }
 
 func (m model) requestNameInput() string {
